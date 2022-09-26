@@ -1,0 +1,22 @@
+<configuration>
+    <appender name="logcat" class="ch.qos.logback.classic.android.LogcatAppender">
+        <tagEncoder>
+            <pattern>%logger{8}</pattern>
+        </tagEncoder>
+        <encoder>
+            <pattern>[%-8thread] %msg</pattern>
+        </encoder>
+    </appender>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>/sdcard/file.log</file>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %level [%thread] %logger{36} %n%msg%n</pattern>
+        </encoder>
+    </appender>
+
+
+    <root level="DEBUG">
+        <appender-ref ref="logcat" />
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>
