@@ -1,4 +1,5 @@
 import { clientInfo } from "./clientInfo.class";
+import { DateUtils } from "./dateUtils";
 
 export class clientsRepo {
 
@@ -10,9 +11,10 @@ export class clientsRepo {
         }
     }
 
-    getByName = (name: string, minAge: number): clientInfo | null => {
+    getByName = (name: string, oldness: number): clientInfo | null => {
         let info = this.repo.get(name) || null
-        if (info!=null && info.CreationTimestamp > minAge){
+        const now = DateUtils.currentTimestamp()
+        if (info!=null && (now - info.CreationTimestamp) < oldness){
             return info
         }
         return null

@@ -1,0 +1,26 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "typescript",
+			"tsconfig": "tsconfig.json",
+			"option": "watch",
+			"problemMatcher": [
+				"$tsc-watch"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"label": "tsc: отслеживание — tsconfig.json"
+		},
+		{
+			"type": "npm",
+			"script": "compile",
+			"group": "build",
+			"problemMatcher": [],
+			"label": "npm: compile",
+			"detail": "tsc"
+		}
+	]
+}

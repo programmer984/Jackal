@@ -2,6 +2,7 @@ import express from 'express'
 import { Request, Response } from "express";
 import { clientInfo } from './clientInfo.class';
 import { clientsRepo } from './clientsRepo.class'
+import { DateUtils } from './dateUtils'
 
 const repo = new clientsRepo()
 
@@ -14,38 +15,52 @@ app.listen(port, () => {
 })
 
 const addClientInfo = async (req: Request, res: Response) => {
-    try{
+    try {
         const info = clientInfo.deserialize(req.body)
         repo.validateAndAdd(info)
         res.status(200)
-    }catch(e: any){
+    } catch (e: any) {
         res.status(500)
-        res.send(e.message)        
-    }finally{
+        res.send(e.message)
+    } finally {
         res.end()
     }
 }
 
 
 const getClientInfo = async (req: Request, res: Response) => {
-    
-    try{
+
+    try {
         let clientName = req.query["clientName"] as string
-        let minAge = Number(req.query["minAge"])
-        const info = repo.getByName(clientName, minAge)
+        let oldness = Number(req.query["oldness"])
+        const info = repo.getByName(clientName, oldness)
         res.setHeader("Content-Type", "application/json")
         res.send(info)
         res.status(200)
-    }catch(e: any){
+    } catch (e: any) {
         res.status(500)
-        res.send(e.message) 
-    }finally{
+        res.send(e.message)
+    } finally {
+        res.end()
+    }
+}
+const ping = async (req: Request, res: Response) => {
+    try {
+        res.setHeader("Content-Type", "text/plain")
+        res.status(200)
+        const now = DateUtils.currentTimestamp()
+        res.send("timestamp " + now)
+    } catch (e: any) {
+        res.status(500)
+        res.send(e.message)
+    } finally {
         res.end()
     }
 }
 
 app.post("/clientInfo", addClientInfo);
 app.get("/clientInfo", getClientInfo);
+app.get("/", ping);
 
 
 /*

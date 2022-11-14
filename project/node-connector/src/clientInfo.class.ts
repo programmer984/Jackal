@@ -1,3 +1,4 @@
+import { DateUtils } from "./dateUtils"
 
 export class clientInfo {
 
@@ -16,7 +17,7 @@ export class clientInfo {
   static deserialize(input: any): clientInfo {
     let result = new clientInfo()
     result.Name = input.Name;
-    result.CreationTimestamp = input.CreationTimestamp
+    result.CreationTimestamp = DateUtils.currentTimestamp()
     result.LocalIP = input.LocalIP
     result.LocalPort = input.LocalPort
     result.PublicIP = input.PublicIP
