@@ -10,6 +10,11 @@ public enum VideoFrameTypes {
     Unknown;
     public static final int size = 6;
 
+
+    public byte toByte(){
+        return (byte)ordinal();
+    }
+
     public static VideoFrameTypes of(byte b) {
         if (b >= 6) {
             return Unknown;

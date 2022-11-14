@@ -11,7 +11,9 @@ public class VideoHeaderPacket extends AbstractPacket {
     public static final int WIDTH_OFFSET = BODY_OFFSET;
     public static final int HEIGHT_OFFSET = WIDTH_OFFSET + 2;
     public static final int VIDEO_HEADER_OFFSET = HEIGHT_OFFSET + 2;
-
+    private static final byte[] marker = new byte[]{0, 0, 0, 1};
+    private static final int MINIMUM_HEADER_SIZE = 22;
+    private static final int MAXIMUM_HEADER_SIZE = 30;
     private final int width;
     private final int height;
     private final byte[] headerBuf;
@@ -57,6 +59,20 @@ public class VideoHeaderPacket extends AbstractPacket {
         return new VideoHeaderPacket(width, height, someBuf, packetOffset + VIDEO_HEADER_OFFSET, headerSize);
     }
 
+    public static byte[] copyHeaderFromIdrOrNull(byte[] idr) {
+        if (idr.length >= MINIMUM_HEADER_SIZE && ByteUtils.searchSequense(idr, 0, marker) == 0) {
+            if ((idr[4] & 0x0F) == 7) {
+                //skip first marker (skip first 0 0 0 1 marker)
+                int nextBlockPosition = ByteUtils.searchSequense(idr, MINIMUM_HEADER_SIZE, idr.length - MINIMUM_HEADER_SIZE,
+                        marker, 0, marker.length);
+                if (nextBlockPosition > 0 && nextBlockPosition < MAXIMUM_HEADER_SIZE) {
+                    return ByteUtils.copyBytes(idr, 0, nextBlockPosition + MINIMUM_HEADER_SIZE);
+                }
+            }
+        }
+        return null;
+    }
+
     /*
     private static final byte[] dataHeader = new byte[]{0, 0, 0, 1};
     public static byte[] searchH264Header(byte[] buf) {
@@ -87,6 +103,8 @@ public class VideoHeaderPacket extends AbstractPacket {
         return (buf[offset + 4] & 0x0F) == 7;
     }
 */
+
+
     @Override
     public void toArray(byte[] buf, int offset, int calculatedSize) {
         ByteUtils.u16ToBuf(width, buf, offset + WIDTH_OFFSET);

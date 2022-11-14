@@ -1,4 +1,5 @@
 import org.example.CommonConfig;
+import org.example.DataReference;
 import org.example.services.videoconsumer.VideoStreamAcceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,12 +56,12 @@ public class VlcPlayer implements VideoStreamAcceptor {
     }
 
     @Override
-    public void writeVideoHeader(byte[] buf, int offset, int length) throws Exception {
-        pipedOutputStream.write(buf, offset, length);
+    public void writeVideoHeader(DataReference data) throws Exception {
+        pipedOutputStream.write(data.getBuf(), data.getOffset(), data.getLength());
     }
 
     @Override
-    public void writeVideoFrame(int id, int partIndex, int partsCount, byte[] buf, int offset, int length) throws Exception {
-        pipedOutputStream.write(buf, offset, length);
+    public void writeVideoFrame(int id, int partIndex, int partsCount, DataReference data) throws Exception {
+        pipedOutputStream.write(data.getBuf(), data.getOffset(), data.getLength());
     }
 }

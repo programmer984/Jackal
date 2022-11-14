@@ -10,6 +10,8 @@ public class CommonConfig {
     public static final int RSA_MinimumSize = 256;
     public static final String AES = "AES";
     private static final String propName = "properties";
+    public static String CHANNEL_TYPE_PLAIN_UDP = "plain_udp";
+    public static String CHANNEL_TYPE_HOLE_UDP = "hole_udp";
 
     private static final Properties appProps = new Properties();
     public static boolean logPackets;
@@ -20,6 +22,9 @@ public class CommonConfig {
     public static String stunServers;
     public static String nodeSyncServer;
     public static String udpHoleThisName, udpHoleThatName;
+    public static Integer plainUdpLocalPort;
+    public static String plainUdpRemoteAddress;
+    public static String mainChannel; //plain_udp, hole_udp
 
     public static List<String> getSettingAsList(String value){
         if (value==null || value.isEmpty()){
@@ -62,6 +67,9 @@ public class CommonConfig {
             nodeSyncServer = getOrDefault(appProps, "sync_server_url", "http://some.server.net:3000");
             udpHoleThisName = getOrDefault(appProps, "udphole.this_name", "myName");
             udpHoleThatName = getOrDefault(appProps, "udphole.that_name", "thatName");
+            plainUdpLocalPort = getOrDefault(appProps, "plainudp.local_port", 27015);
+            plainUdpRemoteAddress = getOrDefault(appProps, "plainudp.remote_address", "127.0.0.1:27015");
+            mainChannel = getOrDefault(appProps, "main_channel", CHANNEL_TYPE_PLAIN_UDP);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {

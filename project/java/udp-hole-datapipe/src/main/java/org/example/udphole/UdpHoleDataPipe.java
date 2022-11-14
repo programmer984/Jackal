@@ -2,14 +2,13 @@ package org.example.udphole;
 
 import org.example.CommonConfig;
 import org.example.PathUtils;
-import org.example.communication.DataPipe;
-import org.example.communication.DataPipeStates;
-import org.example.communication.PipeDataConsumer;
-import org.example.communication.StateChangeListener;
+import org.example.TimeUtils;
+import org.example.communication.*;
 import org.example.communication.logging.DataLogger;
 import org.example.communication.logging.FileSystemPacketsLogger;
 import org.example.communication.logging.NoLogger;
 import org.example.communication.logging.PostLogger;
+import org.example.softTimer.TimerCallback;
 import org.example.tools.UdpHoleDataPipeFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,18 +24,28 @@ public class UdpHoleDataPipe implements DataPipe {
     private static final Logger logger
             = LoggerFactory.getLogger(UdpHoleDataPipe.class);
     private PipeDataConsumer incomingDataConsumer;
-    private DataPipeStates state;
+    private DataPipeStates state = DataPipeStates.Idle;
     private ConnectionManager connectionManager;
-    private static final int maxQueueSize = 5;
+    private static final int maxQueueSize = 20; //should keep 1 splitted videoframe
+    private static final int KEEP_ALIVE_RECEIVING_PERIOD = 4;//seconds
+    private static final int KEEP_ALIVE_SENDING_PERIOD = 1;//we must to send something every second
+    private static final int WATCHDOG_PERIOD=1000;//ms
     private final BlockingQueue<Future<semicolonedData>> packetsQueue = new LinkedBlockingDeque<>(maxQueueSize);
     private final ExecutorService executorService = java.util.concurrent.Executors.newWorkStealingPool();
     private final String thisName;
     private Thread sendingEncryptedDataThread;
     private DataLogger packetsLogger;
+    private boolean connectCommandWasInvoked = false;
+    private Object sentLock = new Object();
+    private Object receiveLock = new Object();
+    private long lastReceivedTimestamp;
+    private long lastSentTimestamp;
+    private KeepAlivePacketProducer keepAlivePacketProducer;
 
     public UdpHoleDataPipe(String thisName, String thatName,
-                           UdpHoleDataPipeFactory factory) {
+                           UdpHoleDataPipeFactory factory, KeepAlivePacketProducer keepAlivePacketProducer) {
         this.thisName = thisName;
+        this.keepAlivePacketProducer = keepAlivePacketProducer;
         this.connectionManager = new ConnectionManager(thisName, thatName,
                 incomingDataConsumerProxy, stateChangeListener,
                 factory);
@@ -45,7 +54,55 @@ public class UdpHoleDataPipe implements DataPipe {
         } else {
             packetsLogger = new NoLogger();
         }
+        factory.getTimersManager().addTimer(WATCHDOG_PERIOD, true, keepWatchdog);
     }
+
+    synchronized boolean isConnectCommandWasInvoked() {
+        return connectCommandWasInvoked;
+    }
+
+    synchronized void setConnectCommandWasInvoked(boolean connectCommandWasInvoked) {
+        this.connectCommandWasInvoked = connectCommandWasInvoked;
+    }
+
+    long getLastReceivedTimestamp() {
+        synchronized (receiveLock) {
+            return lastReceivedTimestamp;
+        }
+    }
+
+    void setLastReceivedTimestamp(long lastReceivedTimestamp) {
+        synchronized (receiveLock) {
+            this.lastReceivedTimestamp = lastReceivedTimestamp;
+        }
+    }
+
+    long getLastSentTimestamp() {
+        synchronized (sentLock) {
+            return lastSentTimestamp;
+        }
+    }
+
+    void setLastSentTimestamp(long lastSentTimestamp) {
+        synchronized (sentLock) {
+            this.lastSentTimestamp = lastSentTimestamp;
+        }
+    }
+
+    private TimerCallback keepWatchdog = () -> {
+        if (isConnectCommandWasInvoked() && getCurrentState() == DataPipeStates.Idle) {
+            startConnectAsync();
+        }
+        if (getCurrentState() == DataPipeStates.Alive) {
+            if (TimeUtils.elapsedSeconds(KEEP_ALIVE_RECEIVING_PERIOD, getLastReceivedTimestamp())) {
+                stop();
+                logger.warn("Connection stopped by watchdog");
+            }
+            if (TimeUtils.elapsedSeconds(KEEP_ALIVE_SENDING_PERIOD, getLastSentTimestamp())) {
+                sendKeepAlive();
+            }
+        }
+    };
 
     @Override
     public void setIncomingDataConsumer(PipeDataConsumer incomingDataConsumer) {
@@ -54,20 +111,28 @@ public class UdpHoleDataPipe implements DataPipe {
 
     @Override
     public void startConnectAsync() {
-        setState(DataPipeStates.Connecting);
-        if (sendingEncryptedDataThread == null) {
-            sendingEncryptedDataThread = new Thread(sendingProcess, "udphole-send-" + this.thisName);
-            sendingEncryptedDataThread.setDaemon(true);
-            sendingEncryptedDataThread.start();
+        synchronized (connectionManager) {
+            if (getCurrentState() == DataPipeStates.Idle) {
+                setState(DataPipeStates.Connecting);
+                setConnectCommandWasInvoked(true);
+                logger.info("Starting connection manager");
+                if (sendingEncryptedDataThread == null) {
+                    sendingEncryptedDataThread = new Thread(sendingProcess, "udphole-send-" + this.thisName);
+                    sendingEncryptedDataThread.setDaemon(true);
+                    sendingEncryptedDataThread.start();
+                }
+                connectionManager.startAndKeepAlive();
+            }
         }
-        connectionManager.startAndKeepAlive();
     }
 
     @Override
     public void stop() {
+        setConnectCommandWasInvoked(false);
         setState(DataPipeStates.Idle);
         connectionManager.reset();
     }
+
 
     private synchronized void setState(DataPipeStates state) {
         this.state = state;
@@ -90,11 +155,20 @@ public class UdpHoleDataPipe implements DataPipe {
             } catch (InterruptedException e) {
                 logger.error("outgoing queue put", e);
             }
+        } else {
+            logger.warn("send data skipped. length of the lost data {}", length);
         }
     }
 
+    private void sendKeepAlive(){
+        byte[] data =keepAlivePacketProducer.createKeepAlive();
+        sendData(data, 0, data.length, logId -> {
+            logger.info("Keep alive sent");
+        });
+    }
 
     private PipeDataConsumer incomingDataConsumerProxy = (data, offset, size, logIdNull) -> {
+        setLastReceivedTimestamp(TimeUtils.nowMs());
         Integer logId = packetsLogger.addIncomingBunch(data);
         incomingDataConsumer.onDataReceived(data, offset, size, logId);
     };
@@ -102,17 +176,22 @@ public class UdpHoleDataPipe implements DataPipe {
     private StateChangeListener stateChangeListener = new StateChangeListener() {
         @Override
         public void onConnected() {
+            setLastReceivedTimestamp(TimeUtils.nowMs());
+            setLastSentTimestamp(TimeUtils.nowMs());
+            sendKeepAlive();
             setState(DataPipeStates.Alive);
         }
 
         @Override
         public void onConnectFailed() {
             setState(DataPipeStates.Idle);
+            logger.info("Connect failed");
         }
 
         @Override
         public void onDisconnected() {
             setState(DataPipeStates.Idle);
+            logger.info("Disconnected");
         }
     };
 
@@ -125,6 +204,7 @@ public class UdpHoleDataPipe implements DataPipe {
                         semicolonedData nextBunch = nextBunchFuture.get();
                         connectionManager.sendEncrypted(nextBunch.getEncryptedData());
                         packetsLogger.addOutgoingBunch(nextBunch.data, nextBunch.postLogger);
+                        setLastSentTimestamp(TimeUtils.nowMs());
                     }
                 } else {
                     if (!packetsQueue.isEmpty()) {

@@ -57,8 +57,12 @@ public class CachedVideoProducer implements AutoCloseable, ServicePacketAcceptor
         int newId = videoFramesVersion.incrementAndGet();
         if (VideoFrameTypes.VideoFrameTypeIDR.equals(videoFrame.getVideoFrameType())) {
             ImageSize imageSize = videoProducer.getActualImageSize();
-            videoHeaderPacket = new VideoHeaderPacket(imageSize.getWidth(), imageSize.getHeight(),
-                    videoFrame.getFrameData(), 0, videoFrame.getFrameData().length);
+            //take a few bytes from IDR packet from 0 0 0 1 0x67 .... to 0 0 0 0
+            byte[] header = VideoHeaderPacket.copyHeaderFromIdrOrNull(videoFrame.getFrameData());
+            if (header != null) {
+                videoHeaderPacket = new VideoHeaderPacket(imageSize.getWidth(), imageSize.getHeight(),
+                        header, 0, header.length);
+            }
         }
         synchronized (this) {
             if (timeToSendHeader) {

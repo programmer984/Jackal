@@ -9,7 +9,13 @@
 #include <codec_def.h>
 #include <codec_app_def.h>
 #include "epTypes.h"
+#include "log.h"
+#include "common.h"
+volatile bool shouldWork;
 
+
+//produces start[3], frame_type[1], body_length[4], body[body_length]
+//start 0x45 0x45 0x47
 int epInitialize(EPInstance *instance, int width, int height,
                  int maxFrameRate, int targetBitrate) {
     int rv = WelsCreateSVCEncoder(&instance->encoder);
@@ -39,14 +45,15 @@ int epInitialize(EPInstance *instance, int width, int height,
     param->iPicWidth = width;
     param->iPicHeight = height;
     param->iTargetBitrate = targetBitrate;
-    param->uiIntraPeriod = 500000;
+    param->uiIntraPeriod = 2000;
+
 
     rv = inst->InitializeExt(instance->encoder, param);
     assert(0 == rv);
 
     int videoFormat = videoFormatI420;
     inst->SetOption(instance->encoder, ENCODER_OPTION_DATAFORMAT, &videoFormat);
-    int idrInterval = maxFrameRate;
+    int idrInterval = maxFrameRate*2; //every 2 seconds
     inst->SetOption(instance->encoder, ENCODER_OPTION_IDR_INTERVAL, &idrInterval);
 
     SSourcePicture *pic = &instance->pic;
@@ -65,6 +72,10 @@ int epInitialize(EPInstance *instance, int width, int height,
     return 0;
 }
 
+void stopThread(){
+    shouldWork = false;
+}
+
 void epRun(EPInstance *instance) {
     SSourcePicture *pic = &instance->pic;
     const ISVCEncoderVtbl *inst = (*instance->encoder);
@@ -75,17 +86,18 @@ void epRun(EPInstance *instance) {
     frameHeader[1] = 0x45;
     frameHeader[2] = 0x47;
     byte *headerPtr = &frameHeader[0];
+    shouldWork = true;
     int rv;
-    while (1) {
+    while (shouldWork) {
         YUVImage *image = instance->getNextYUVImage();
         if (image->start[0] != frameHeader[0]
             || image->start[1] != frameHeader[1]
                || image->start[2] != frameHeader[2]) {
             break;
         }
-        long timestamp = 0;
-        memcpy((byte *) &timestamp, &image->timestamp[0], YUVImageTimestampSize);
-        pic->uiTimeStamp = timestamp;
+
+        pic->uiTimeStamp = getS64(&image->timestamp[0]);
+        //LOG_DEBUG("Picture timestamp %lld", pic->uiTimeStamp);
 
         byte *data = image->body;
         pic->pData[0] = data;
@@ -98,12 +110,31 @@ void epRun(EPInstance *instance) {
         /// videoFrameTypeIDR,        < IDR frame in H.264
         /// videoFrameTypeI,          < I frame type
         /// videoFrameTypeP,          < P frame type
-        if (info.eFrameType != videoFrameTypeSkip) {
+        //LOG_DEBUG("Frame type %u", info.eFrameType);
+
+
+        if (info.eFrameType == videoFrameTypeP ||
+        info.eFrameType == videoFrameTypeI || info.eFrameType == videoFrameTypeIDR) {
             //output bitstream handling
             frameHeader[3] = info.eFrameType;
+            int totalSize=0;
+            for (int iLayer = 0; iLayer < info.iLayerNum; iLayer++) {
+                SLayerBSInfo layerInfo = info.sLayerInfo[iLayer];
+                int iNalIdx = layerInfo.iNalCount - 1;
+                do {
+                    totalSize += layerInfo.pNalLengthInByte[iNalIdx];
+                    --iNalIdx;
+                } while (iNalIdx >= 0);
+            }
+            frameHeader[4] = (byte)totalSize;
+            frameHeader[5] = (byte)(totalSize>>8);
+            frameHeader[6] = (byte)(totalSize>>16);
+            frameHeader[7] = (byte)(totalSize>>24);
 
-            //for (int iLayer = 0; iLayer < info.iLayerNum; iLayer++) {
-                SLayerBSInfo layerInfo = info.sLayerInfo[0];
+            instance->writeOut(headerPtr, VideFrameHeaderSize);
+
+            for (int iLayer = 0; iLayer < info.iLayerNum; iLayer++) {
+                SLayerBSInfo layerInfo = info.sLayerInfo[iLayer];
 
                 int iLayerSize = 0;
                 int iNalIdx = layerInfo.iNalCount - 1;
@@ -112,13 +143,9 @@ void epRun(EPInstance *instance) {
                     --iNalIdx;
                 } while (iNalIdx >= 0);
 
-                byte *outBuf = layerInfo.pBsBuf;
-                frameHeader[4] = (byte)iLayerSize;
-                frameHeader[5] = (byte)(iLayerSize>>8);
-                frameHeader[6] = (byte)(iLayerSize>>16);
-                frameHeader[7] = (byte)(iLayerSize>>24);
-                instance->onVideoFrameCreated(headerPtr, outBuf, iLayerSize);
-            //}
+                instance->writeOut(layerInfo.pBsBuf, iLayerSize);
+            }
         }
     }
+    WelsDestroySVCEncoder(inst);
 }

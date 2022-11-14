@@ -1,6 +1,7 @@
 package org.example.services.videoproducer;
 
 import org.example.Dispatcher;
+import org.example.RunnableThrows;
 import org.example.services.videoproducer.codec.Codec;
 import org.example.services.videoproducer.codec.CodecCreator;
 import org.example.services.videoproducer.codec.VideoFrameConsumer;
@@ -39,7 +40,7 @@ public class VideoProducer implements AutoCloseable {
     }
 
 
-    private Runnable createNextFrame = () -> {
+    private RunnableThrows createNextFrame = () -> {
         YUVImage nextImage = imageProducer.getFreshImageOrNull();
         try {
             //if there is next image and acceptor of the

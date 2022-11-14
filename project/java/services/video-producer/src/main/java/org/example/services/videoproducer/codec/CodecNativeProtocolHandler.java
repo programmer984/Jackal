@@ -7,6 +7,7 @@ import org.example.packetsReceiver.ProtocolHandler;
 
 /**
  * During with native codec interacting we ought to receive video frames
+ * start[3], frame_type[1], body_length[4], body[body_length]
  */
 class CodecNativeProtocolHandler implements ProtocolHandler {
 

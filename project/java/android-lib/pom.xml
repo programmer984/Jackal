@@ -24,6 +24,11 @@
         </dependency>
         <dependency>
             <groupId>org.example</groupId>
+            <artifactId>udp-plain-datapipe</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.example</groupId>
             <artifactId>commons</artifactId>
             <version>${project.version}</version>
         </dependency>

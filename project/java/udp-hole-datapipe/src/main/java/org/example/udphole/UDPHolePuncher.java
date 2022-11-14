@@ -12,6 +12,7 @@ import java.net.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 class UDPHolePuncher {
 
@@ -26,12 +27,14 @@ class UDPHolePuncher {
     private static final int public_port_max = 65530;
 
     private boolean shouldWork = true;
-    private boolean connectionPacketReceived;
+
     private long connectionPacketReceivedTimestamp = 0;
     private static final int AWAIT_ECHO_MS = 500;
-    private boolean echoReceived = false;
+    private static final int PUNCHING_SECONDS = 5;
     //received packets from this endpoint
-    private final Set<UDPEndPoint> remoteEndpoints = Collections.synchronizedSet(new HashSet<>());
+    private final Set<UdpEndpointWithReply> remoteEndpoints = Collections.synchronizedSet(new HashSet<>());
+    //endpoints from which we received an echo
+    private final Set<UDPEndPoint> echoEndpoints = Collections.synchronizedSet(new HashSet<>());
 
 
     //remote addresses
@@ -72,28 +75,12 @@ class UDPHolePuncher {
         }
     }
 
-    synchronized boolean isEchoReceived() {
-        return echoReceived;
-    }
-
-    synchronized void setEchoReceived(boolean echoReceived) {
-        this.echoReceived = echoReceived;
-    }
-
     synchronized boolean isShouldWork() {
         return shouldWork;
     }
 
     synchronized void setShouldWork(boolean shouldWork) {
         this.shouldWork = shouldWork;
-    }
-
-    synchronized boolean isConnectionPacketReceived() {
-        return connectionPacketReceived;
-    }
-
-    synchronized void setConnectionPacketReceived(boolean connectionPacketReceived) {
-        this.connectionPacketReceived = connectionPacketReceived;
     }
 
     synchronized long getConnectionPacketReceivedTimestamp() {
@@ -124,16 +111,32 @@ class UDPHolePuncher {
 
             while (isShouldWork()) {
                 //send local packets, then 20000 public packets (for example from 1.1.1.1:5005 to 1.1.1.1:25020)
-                if (!isConnectionPacketReceived()) {
+                if (remoteEndpoints.isEmpty()) {
                     sendForwardLocals();
-                    Thread.sleep(50);
+                    Thread.sleep(200);
                     sendForwardInet();
-                }else {
-                    if (!isEchoReceived()) {
-                        UDPEndPoint endPoint = remoteEndpoints.iterator().next();
-                        sendForward(endPoint);
-                    } else if (isEchoReceived() ||
-                            TimeUtils.elapsed(AWAIT_ECHO_MS, getConnectionPacketReceivedTimestamp())) {
+                } else {
+                    //no reply for us yet
+                    if (echoEndpoints.isEmpty()) {
+                        for (UdpEndpointWithReply udpEndpointWithReply : remoteEndpoints) {
+                            synchronized (sendLock) {
+                                inSocket.send(udpEndpointWithReply.outEchoPacket);
+                                logger.debug("Sent Echo packet with size {} to {}", udpEndpointWithReply.outEchoPacket.getData().length,
+                                        udpEndpointWithReply.endPoint);
+                            }
+                            Thread.sleep(100);
+                        }
+                    } else if (!TimeUtils.elapsed(AWAIT_ECHO_MS, getConnectionPacketReceivedTimestamp())) {
+                        //send echoes again and again (may be previous packets were lost)
+                        for (UdpEndpointWithReply udpEndpointWithReply : remoteEndpoints) {
+                            synchronized (sendLock) {
+                                inSocket.send(udpEndpointWithReply.outEchoPacket);
+                                logger.debug("Sent Echo packet again with size {} to {}", udpEndpointWithReply.outEchoPacket.getData().length,
+                                        udpEndpointWithReply.endPoint);
+                            }
+                            Thread.sleep(100);
+                        }
+                    } else {
                         setShouldWork(false);
                         break;
                     }
@@ -143,6 +146,7 @@ class UDPHolePuncher {
 
                 //main timeout
                 if (TimeUtils.elapsedSeconds(timeoutSeconds, startConnectionMs)) {
+                    logger.warn("Punching timeout");
                     setShouldWork(false);
                     break;
                 }
@@ -156,7 +160,7 @@ class UDPHolePuncher {
             receiveAwaitThread.interrupt();
         }
 
-        return isEchoReceived() || isConnectionPacketReceived();
+        return !echoEndpoints.isEmpty() || !remoteEndpoints.isEmpty();
     }
 
     private void sendForward(UDPEndPoint endPoint) throws IOException {
@@ -174,6 +178,7 @@ class UDPHolePuncher {
             DatagramPacket p = new DatagramPacket(packet, packet.length, localIp, remoteLocalPort);
             synchronized (sendLock) {
                 inSocket.send(p);
+                logger.debug("Sent punch packet with size {}", packet.length);
             }
         }
     }
@@ -188,7 +193,7 @@ class UDPHolePuncher {
         long startSending = TimeUtils.nowMs();
         int minPort = remotePublicPort < public_port_min ? remotePublicPort - 1000 : public_port_min;
         for (int port = minPort; port < public_port_max; port++) {
-            if (isConnectionPacketReceived()) {
+            if (!remoteEndpoints.isEmpty() || !echoEndpoints.isEmpty()) {
                 break;
             }
             try {
@@ -201,7 +206,7 @@ class UDPHolePuncher {
                 logger.error("During sending to public port {}", port, e);
             }
         }
-        logger.debug("->->->->->->->->-> Parallel sending took {} ms", TimeUtils.nowMs() - startSending);
+        logger.debug("Inet Punching took {} ms", TimeUtils.nowMs() - startSending);
     }
 
 
@@ -226,16 +231,16 @@ class UDPHolePuncher {
                     if (!ConnectionPacket.isEcho(connectionBuf) &&
                             ConnectionPacket.fingerPrintEquals(connectionBuf, thisFingerprint)) {
                         //send echo
-                        byte[] cloneReply = Arrays.copyOf(connectionBuf, packetSize);
+                        byte[] cloneReply = ByteUtils.copyBytes(connectionBuf, 0, packetSize);
                         cloneReply[4] = ConnectionPacket.echoFlag;
                         ConnectionPacket.calculateAndApplyCrc(cloneReply, packetSize);
                         SocketAddress replyAddress = packet.getSocketAddress();
                         DatagramPacket echo = new DatagramPacket(cloneReply, packetSize, replyAddress);
-                        remoteEndpoints.add(new UDPEndPoint(addressType, new InetSocketAddress(packet.getAddress(), packet.getPort())));
-                        if (!isConnectionPacketReceived()) {
-                            setConnectionPacketReceived(true);
+                        UDPEndPoint echoAddress = new UDPEndPoint(addressType, new InetSocketAddress(packet.getAddress(), packet.getPort()));
+                        if (remoteEndpoints.isEmpty()) {
                             setConnectionPacketReceivedTimestamp(TimeUtils.nowMs());
                         }
+                        remoteEndpoints.add(new UdpEndpointWithReply(echoAddress, echo));
                         synchronized (sendLock) {
                             inSocket.send(echo);
                         }
@@ -245,13 +250,10 @@ class UDPHolePuncher {
                         // -we received packet which we sent in connect method
                         if (ConnectionPacket.fingerPrintEquals(connectionBuf, remoteFingerprint)) {
                             InetSocketAddress successRemote = ConnectionPacket.getFromPacketBody(connectionBuf);
-                            setEchoReceived(true);
                             logger.info("{} Success remote found {} ", thisName, successRemote);
-                            remoteEndpoints.add(new UDPEndPoint(addressType, successRemote));
-                            if (!isConnectionPacketReceived()) {
-                                setConnectionPacketReceived(true);
-                                setConnectionPacketReceivedTimestamp(TimeUtils.nowMs());
-                            }
+                            echoEndpoints.add(new UDPEndPoint(addressType, successRemote));
+                        } else {
+                            logger.warn("Wrong fingerprint ");
                         }
                     }
                 } else {
@@ -262,12 +264,17 @@ class UDPHolePuncher {
                 logger.error("during UDPConnection awaiting incoming packet", e);
             }
         }
-        logger.debug("UDPConnection stopped receiving the packet");
+        logger.debug("UDPConnection stopped receiving the packet. connection packet received {}, echo received {}", remoteEndpoints.size(), echoEndpoints.size());
     };
 
 
     public List<UDPEndPoint> getRemoteEndpoints() {
-        return new ArrayList<>(remoteEndpoints);
+        if (!echoEndpoints.isEmpty()) {
+            return new ArrayList<>(echoEndpoints);
+        }
+        return remoteEndpoints.stream()
+                .map(endpoint -> endpoint.endPoint)
+                .collect(Collectors.toList());
     }
 
 
@@ -278,6 +285,32 @@ class UDPHolePuncher {
 
     public byte[] getRemoteFingerprint() {
         return remoteFingerprint;
+    }
+
+    /**
+     * we received packet from this endpoint and sent echo
+     */
+    private static class UdpEndpointWithReply {
+        final UDPEndPoint endPoint;
+        final DatagramPacket outEchoPacket;
+
+        private UdpEndpointWithReply(UDPEndPoint endPoint, DatagramPacket outEchoPacket) {
+            this.endPoint = endPoint;
+            this.outEchoPacket = outEchoPacket;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            UdpEndpointWithReply that = (UdpEndpointWithReply) o;
+            return Objects.equals(endPoint, that.endPoint);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(endPoint);
+        }
     }
 
 }

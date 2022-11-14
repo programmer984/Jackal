@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 public class Dispatcher implements Runnable, AutoCloseable {
     private final static Logger logger = LoggerFactory.getLogger(Dispatcher.class);
     private final int queueSize;
-    private final BlockingQueue<Runnable> tasksQueue;
+    private final BlockingQueue<RunnableThrows> tasksQueue;
     private final Thread worker;
     private final Object lock = new Object();
 
@@ -30,7 +30,7 @@ public class Dispatcher implements Runnable, AutoCloseable {
         return tasksQueue.isEmpty();
     }
 
-    public void submitBlocking(Runnable task) {
+    public void submitBlocking(RunnableThrows task) {
         try {
             tasksQueue.put(task);
         } catch (InterruptedException e) {
@@ -38,11 +38,20 @@ public class Dispatcher implements Runnable, AutoCloseable {
         }
     }
 
-    public void join() throws InterruptedException {
+    public void joinPendingTasks() throws InterruptedException {
         synchronized (lock) {
             while (!tasksQueue.isEmpty()) {
                 lock.wait();
             }
+        }
+    }
+
+    public void join() throws InterruptedException {
+        join(0);
+    }
+    public void join(int ms) throws InterruptedException {
+        if (worker.isAlive()){
+            worker.join(ms);
         }
     }
 
@@ -55,7 +64,7 @@ public class Dispatcher implements Runnable, AutoCloseable {
     public void run() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                Runnable nextTask = tasksQueue.poll(20, TimeUnit.MILLISECONDS);
+                RunnableThrows nextTask = tasksQueue.poll(20, TimeUnit.MILLISECONDS);
                 if (nextTask != null) {
                     nextTask.run();
                 } else {

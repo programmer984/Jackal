@@ -22,7 +22,7 @@ typedef struct {
 
 typedef struct {
     YUVImage* (*getNextYUVImage)(); //blocking method, blocks untill image ready
-    void (*onVideoFrameCreated)(byte* header, byte* data, int dataSize);
+    void (*writeOut)(byte* data, int dataSize);//write out part of the frame
     int yuvImageSize; //width * height * 3 / 2;
     int wh; //width * height
     ISVCEncoder *encoder;

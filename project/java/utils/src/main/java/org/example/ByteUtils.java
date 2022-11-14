@@ -115,6 +115,16 @@ public class ByteUtils {
         return searchSequense(src, srcOffset, srcSize, target, 0, target.length);
     }
 
+    /**
+     * returns RELATIVE offset or -1
+     * @param src
+     * @param srcOffset
+     * @param srcSize
+     * @param target
+     * @param targetOffset
+     * @param targetSize
+     * @return
+     */
     public static int searchSequense(byte[] src, int srcOffset, int srcSize, byte[] target, int targetOffset, int targetSize) {
         int found = -1;
         if (targetSize <= srcSize) {

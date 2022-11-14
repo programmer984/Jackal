@@ -18,6 +18,7 @@
         <module>desktop-implementations</module>
         <module>consoleControlApp</module>
         <module>android-lib</module>
+        <module>udp-plain-datapipe</module>
     </modules>
 
     <properties>

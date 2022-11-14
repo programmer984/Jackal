@@ -1,5 +1,7 @@
 package org.example.services.videoconsumer;
 
+import org.example.DataReference;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -22,15 +24,15 @@ public class VideoRecorderDecorator implements VideoStreamAcceptor, AutoCloseabl
     }
 
     @Override
-    public void writeVideoHeader(byte[] buf, int offset, int length) throws Exception {
-        decorable.writeVideoHeader(buf, offset, length);
-        fileOutputStream.write(buf, offset, length);
+    public void writeVideoHeader(DataReference dataReference) throws Exception {
+        decorable.writeVideoHeader(dataReference);
+        fileOutputStream.write(dataReference.getBuf(), dataReference.getOffset(), dataReference.getLength());
     }
 
     @Override
-    public void writeVideoFrame(int id, int partIndex, int partsCount, byte[] buf, int offset, int length) throws Exception {
-        decorable.writeVideoFrame(id, partIndex, partsCount, buf, offset, length);
-        fileOutputStream.write(buf, offset, length);
+    public void writeVideoFrame(int id, int partIndex, int partsCount, DataReference dataReference) throws Exception {
+        decorable.writeVideoFrame(id, partIndex, partsCount, dataReference);
+        fileOutputStream.write(dataReference.getBuf(), dataReference.getOffset(), dataReference.getLength());
     }
 
     @Override

@@ -9,12 +9,6 @@
             <pattern>[%-8thread] %msg</pattern>
         </encoder>
     </appender>
-    <appender name="ONE_FILE" class="ch.qos.logback.core.FileAppender">
-        <file>/sdcard/logs/file.log</file>
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %level [%thread] %logger{36} %msg%n</pattern>
-        </encoder>
-    </appender>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_ROOT}/application.log</file>
@@ -42,5 +36,12 @@
         <appender-ref ref="logcat"/>
         <appender-ref ref="FILE"/>
     </Logger>
-
+<!--
+    <Logger name="com.example.dataprovider.service.FromCameraImageProducer" level="DEBUG" additivity="false">
+        <appender-ref ref="logcat"/>
+    </Logger>
+    <Logger name="org.example.services.videoproducer.codec.Codec" level="DEBUG" additivity="false">
+        <appender-ref ref="logcat"/>
+    </Logger>
+-->
 </configuration>

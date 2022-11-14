@@ -1,5 +1,5 @@
 package org.example.softTimer;
 @FunctionalInterface
 public interface TimerCallback {
-    void invoke();
+    void invoke() throws Exception;
 }

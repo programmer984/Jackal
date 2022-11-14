@@ -6,6 +6,7 @@
 int epInitialize(EPInstance *instance, int width, int height, 
     int maxFrameRate, int targetBitrate);
 
+void stopThread();
 void epRun(EPInstance *instance);
 
 #endif

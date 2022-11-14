@@ -23,8 +23,9 @@ import java.security.GeneralSecurityException;
 import java.util.List;
 
 class ConnectionManager {
-    private final int TIMEOUT_CONNECTION_SECONDS = 20;
-    private int OLDNESS_SECONDS = 30;
+    private final int PUNCHING_TIMEOUT_SECONDS = 7;
+    private final int TIMEOUT_CONNECTION_SECONDS = 60;
+    private int OLDNESS_SECONDS = 50;
 
     private String thisName;
     private String thatName;
@@ -60,15 +61,22 @@ class ConnectionManager {
 
     public void reset() {
         logger.info("Reset called");
-        if (overallTimeoutTimer != null) {
-            timersManager.removeTimer(overallTimeoutTimer);
-            overallTimeoutTimer = null;
+        SoftTimer timer = getOverallTimeoutTimer();
+        if (timer != null) {
+            timersManager.removeTimer(timer);
+            setOverallTimeoutTimer(null);
         }
         AesInitialization aesInitialization = getAesInitialization();
         if (aesInitialization != null) {
-            aesInitialization.resetTimer();
+            try {
+                aesInitialization.close();
+            } catch (Exception e) {
+                logger.error("during aesInitialization disposing", e);
+            }finally {
+                setAesInitialization(null);
+            }
         }
-        setAesInitialization(null);
+
         setEncryptionProxy(null);
 
 
@@ -96,17 +104,25 @@ class ConnectionManager {
         this.socket = socket;
     }
 
+    synchronized SoftTimer getOverallTimeoutTimer() {
+        return overallTimeoutTimer;
+    }
+
+    synchronized void setOverallTimeoutTimer(SoftTimer overallTimeoutTimer) {
+        this.overallTimeoutTimer = overallTimeoutTimer;
+    }
+
     public void startAndKeepAlive() {
         reset();
 
-        overallTimeoutTimer = factory.getTimersManager()
+        setOverallTimeoutTimer(factory.getTimersManager()
                 .addTimer(TIMEOUT_CONNECTION_SECONDS * 1000, false, () -> {
                     //assume if encryption proxy exists connection good
                     if (getEncryptionProxy() == null) {
                         reset();
                         stateChangeListener.onConnectFailed();
                     }
-                });
+                }));
 
         connectionEstablishThread = new Thread(connectionEstablishProcess, "udp-hole-connecting-" + thisName);
         connectionEstablishThread.setDaemon(true);
@@ -165,7 +181,6 @@ class ConnectionManager {
     private final Runnable connectionEstablishProcess = () -> {
         try {
             connect();
-            connectionEstablishThread = null;
         } catch (Exception e) {
             logger.error("ConnectionManager connect {}", e.getMessage());
             stateChangeListener.onConnectFailed();
@@ -196,11 +211,10 @@ class ConnectionManager {
             if (cp.sendInfo(thisClient)) {
                 logger.debug("Sent info to sync server about {}", thisClient);
                 long start = TimeUtils.nowMs();
-                int oldness = OLDNESS_SECONDS - TIMEOUT_CONNECTION_SECONDS;
-                //start from 10 seconds to 30 seconds
+
                 while (true) {
                     try {
-                        thatClient = cp.retrieveInfoAbout(thatName, (int) (oldness + (TimeUtils.nowMs() - start) / 1000));
+                        thatClient = cp.retrieveInfoAbout(thatName, OLDNESS_SECONDS);
                     } catch (Exception ignored) {
                         logger.error(String.format("Error during receiving info about ", thatName),
                                 ignored.getMessage());
@@ -210,7 +224,7 @@ class ConnectionManager {
                         logger.debug("retrieved info about {}\n", thatClient);
                         break;
                     }
-                    Thread.sleep(500);
+                    Thread.sleep(1000);
                     if (TimeUtils.elapsedSeconds(TIMEOUT_CONNECTION_SECONDS, start)) {
                         return false;
                     }
@@ -218,14 +232,13 @@ class ConnectionManager {
                 logger.info("starting connecting between \n{} \n{}", thisClient, thatClient);
                 connection = new UDPHolePuncher(thisClient, thatClient, factory.createBase64Tool());
                 try {
-                    if (connection.connect(TIMEOUT_CONNECTION_SECONDS)) {
+                    if (connection.connect(PUNCHING_TIMEOUT_SECONDS)) {
                         setSocket(connection.getSocket());
                         if (getSocket() == null) {
                             throw new RuntimeException("No socket");
                         }
                         successRemote = getBestConnection(connection.getRemoteEndpoints(), thisClient);
-                        byte[] remoteFingerprint = connection.getRemoteFingerprint();
-                        logger.info("received echo from  {}", successRemote);
+                        logger.info("chosen remote from  {}", successRemote);
 
                         AesInitialization aesInitialization = new AesInitialization(factory.createAesEncryptionTool(),
                                 factory.getTimersManager(),
@@ -278,6 +291,7 @@ class ConnectionManager {
 
         private encryptedDataReceiver(EncryptionProxy proxy) {
             this.proxy = proxy;
+            logger.info("encryptedDataReceiver created for {} with socket {}", proxy.getName(), socket);
         }
 
         @Override
@@ -294,7 +308,8 @@ class ConnectionManager {
                     final int length = packet.getLength();
                     final byte[] receivedEncryptedData = ByteUtils.copyBytes(receiveBuf, 0, length);
                     proxy.putIncomingDataFromSocket(receivedEncryptedData, 0, receivedEncryptedData.length);
-                } catch (IOException e) {
+                } catch (IOException | NullPointerException e) {
+                    logger.warn("receiver thread down", e);
                     return;
                 } catch (Exception e) {
                     logger.error("error", e);

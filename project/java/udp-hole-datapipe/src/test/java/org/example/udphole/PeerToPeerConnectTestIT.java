@@ -2,6 +2,7 @@ package org.example.udphole;
 
 import org.example.CommonConfig;
 import org.example.communication.DataPipeStates;
+import org.example.communication.KeepAlivePacketProducer;
 import org.example.communication.PipeDataConsumer;
 import org.example.endpoint.IncomingPacketAcceptor;
 import org.example.packets.KeepAlive;
@@ -95,15 +96,15 @@ public class PeerToPeerConnectTestIT {
         String client1 = "client1";
         String client2 = "client2";
 
-        UdpHoleDataPipe dataPipe1 = new UdpHoleDataPipe( client1, client2, factory);
-        UdpHoleDataPipe dataPipe2 = new UdpHoleDataPipe( client2, client1, factory);
+        UdpHoleDataPipe dataPipe1 = new UdpHoleDataPipe(client1, client2, factory, keepAlivePacketProducer);
+        UdpHoleDataPipe dataPipe2 = new UdpHoleDataPipe(client2, client1, factory, keepAlivePacketProducer);
         udpHoleEndPoint1 = new UdpHoleEndPoint(dataPipe1, acceptor1, factory.getTimersManager());
         udpHoleEndPoint2 = new UdpHoleEndPoint(dataPipe2, acceptor2, factory.getTimersManager());
 
         factory.getTimersManager().addTimer(500, true, () ->
         {
             if (dataPipe1.getCurrentState() == DataPipeStates.Alive) {
-               udpHoleEndPoint1.packetWasBorn(new KeepAlive(), null);
+                udpHoleEndPoint1.packetWasBorn(new KeepAlive(), null);
             }
             if (dataPipe2.getCurrentState() == DataPipeStates.Alive) {
                 udpHoleEndPoint2.packetWasBorn(new KeepAlive(), null);
@@ -119,6 +120,10 @@ public class PeerToPeerConnectTestIT {
 
         Assert.assertTrue(testSuccess.get());
     }
+
+    private KeepAlivePacketProducer keepAlivePacketProducer = () -> {
+        return new KeepAlive().toArray(true);
+    };
 
     private PipeDataConsumer rawBytesConsumer1 = (data, offset, size, logId) -> {
         //TODO fix this cross reference

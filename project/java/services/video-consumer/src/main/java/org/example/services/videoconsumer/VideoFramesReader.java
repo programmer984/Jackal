@@ -2,6 +2,7 @@ package org.example.services.videoconsumer;
 
 
 import org.example.ByteUtils;
+import org.example.DataReference;
 import org.example.Dispatcher;
 import org.example.TimeUtils;
 import org.example.endpoint.OutgoingPacketCarrier;
@@ -50,6 +51,9 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
     //how many times we can request lacks for this ID
     private static final int MAX_LACKS_REQUEST_TIMES = 1;
 
+
+    private static final int REINIT_SECONDS = 3;
+
     private int lastSentId;
     private static final int SENT_PACKETS_HOLD_COUNT = 20;
     //we sent something and lastSentId set
@@ -85,13 +89,12 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
     }
 
 
-    public void setHeader(byte[] packets, int packetOffset, Integer logId) {
+    void setHeader(byte[] packets, int packetOffset, Integer logId) {
         this.header = VideoHeaderPacket.fromBuf(packets, packetOffset);
-        acceptorDispatcher.submitBlocking(() -> {
-            acceptor.configureVideoAcceptor(header.getWidth(), header.getHeight());
-            logger.debug("Header set logId {}, w:h {} {} {}", logId, header.getWidth(), header.getHeight(),
-                    ByteUtils.toHexString(packets, packetOffset, Math.min(packets.length - packetOffset, 20)));
-        });
+        acceptor.configureVideoAcceptor(header.getWidth(), header.getHeight());
+        logger.debug("Header set logId {}, w:h {} {} {}", logId, header.getWidth(), header.getHeight(),
+                ByteUtils.toHexString(packets, packetOffset, Math.min(packets.length - packetOffset, 20)));
+
     }
 
     /**
@@ -100,12 +103,18 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
      * @param logId saved buffer to some storage @see FileSystemPacketsLogger
      * @throws IOException
      */
-    public void addFrame(PacketReference packet, Integer logId) throws IOException {
+    void addFrame(PacketReference packet, Integer logId) throws IOException {
         packetDecorator p = new packetDecorator(packet, logId);
         if (this.header == null) {
             logger.debug("no header {}", logId);
         } else if (sentPackets.contains(p.id)) {
             logger.debug("already sent {}", p.id);
+        } else if (p.id < lastSentId) {
+            //reset state
+            if (TimeUtils.elapsedSeconds(REINIT_SECONDS, lastEnqueueTime)) {
+                lastSentId = 0;
+                header = null;
+            }
         } else if (p.id > lastSentId) {
             long prevEnqueueTime = lastEnqueueTime;
             pendingPackets.computeIfAbsent(p.id, (id) -> new videoFramePackets(p))
@@ -300,7 +309,7 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
                 if (!headerSent) {
                     acceptorDispatcher.submitBlocking(() -> {
                         try {
-                            acceptor.writeVideoHeader(header.getHeaderBuf(), header.getHeaderOffset(), header.getHeaderLength());
+                            acceptor.writeVideoHeader(new DataReference(header.getHeaderBuf(), header.getHeaderOffset(), header.getHeaderLength()));
                         } catch (Exception e) {
                             logger.error("During header setup ", e);
                         }
@@ -314,7 +323,8 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
                     for (packetDecorator packetDecorator : packetParts) {
                         try {
                             acceptor.writeVideoFrame(packetDecorator.id, packetDecorator.partIndex, packetDecorator.partsCount,
-                                    packetDecorator.getBuffer(), packetDecorator.getVideDataOffset(), packetDecorator.getVideDataLength());
+                                    new DataReference(packetDecorator.getBuffer(), packetDecorator.getVideDataOffset(),
+                                            packetDecorator.getVideDataLength()));
                         } catch (Exception e) {
                             logger.error("During frame send {} ", packetDecorator.toString(), e);
                         }
@@ -327,19 +337,7 @@ public class VideoFramesReader implements AutoCloseable, ServicePacketAcceptor {
 
         public void addPart(packetDecorator part) {
             parts.add(part);
-            if (part.partIndex == 0) {
-                if (VideoFramePacket.isIframe(part.getBuffer(), part.getPacketOffset())) {
-                    logger.debug("I-Frame id {}, logId {}", part.id, part.logId);
-                    isIframe = true;
-                }
-            }
-            if (!isIframe && part.frameConfig.iFrame) {
-                logger.warn("I-frame directly set, but it is not found by analyzer");
-            }
-            if (isIframe && !part.frameConfig.iFrame) {
-                logger.warn("I-frame was found by analyzer, but defined directly by encoder");
-            }
-            isIframe = isIframe || part.frameConfig.iFrame;
+            isIframe = part.frameConfig.iFrame;
         }
 
         public boolean isComplete() {

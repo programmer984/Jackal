@@ -4,12 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public class TimersManager {
     private volatile long timeStampCounter = System.currentTimeMillis();
-    private List<SoftTimer> timers = new CopyOnWriteArrayList<>();
+    private List<SoftTimer> timers = Collections.synchronizedList(new LinkedList<>());
     private static final Logger logger
             = LoggerFactory.getLogger(TimersManager.class);
 
@@ -32,18 +33,25 @@ public class TimersManager {
     }
 
     public SoftTimer addTimer(int period, boolean repeatable, TimerCallback callback) {
+        return addTimer(period, repeatable, callback, "");
+    }
+
+    public SoftTimer addTimer(int period, boolean repeatable, TimerCallback callback, String timerName) {
         SoftTimer timer = new SoftTimer();
         timer.pending = false;
         timer.period = period;
         timer.nextInvoke = timeStampCounter + period;
         timer.repeatable = repeatable;
         timer.callback = callback;
+        timer.timerName = timerName;
         timers.add(timer);
+        logger.debug("Timer {} was added", timer.timerName);
         return timer;
     }
 
-    public void removeTimer(Object timer) {
+    public void removeTimer(SoftTimer timer) {
         timers.remove(timer);
+        logger.debug("Timer {} was removed", timer.timerName);
     }
 
     private void hardwareTimerInvoke() {

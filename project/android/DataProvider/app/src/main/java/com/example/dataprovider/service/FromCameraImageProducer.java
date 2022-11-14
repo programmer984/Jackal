@@ -6,8 +6,6 @@ import android.media.Image;
 import android.util.Size;
 
 import java.nio.ByteBuffer;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import androidx.annotation.NonNull;
@@ -19,7 +17,7 @@ import androidx.core.content.ContextCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
-import org.example.YUVUtils;
+import org.example.rollingHeap.RollingHeap;
 import org.example.services.videoproducer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +25,6 @@ import org.slf4j.LoggerFactory;
 public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(FromCameraImageProducer.class);
 
-    private YUVImage writingImage;
-    private YUVImage temporaryImage;
-    private byte[] tmpBuf;
     private AppCompatActivity context;
     private ListenableFuture<ProcessCameraProvider> cameraProviderListenableFuture;
 
@@ -37,11 +32,20 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
     private volatile ProcessCameraProvider cameraProvider;
     private volatile boolean shouldWork = true;
 
+    private RollingHeap<YUVImage> rollingBuffer;
+    private YUVImage lastImage;
+    private byte[] tmpBuf;
+
+    private int producingPeriod;
+    private long lastProducedTimestamp = 0;
+
     private ImageSize desiredImageSize;
 
-    public FromCameraImageProducer(@NonNull AppCompatActivity context, ImageSize desiredImageSize) {
+    public FromCameraImageProducer(@NonNull AppCompatActivity context, ImageSize desiredImageSize,
+                                   int producingPeriod) {
         this.desiredImageSize = desiredImageSize;
         this.context = context;
+        this.producingPeriod = producingPeriod;
         initCamera();
 
         logger.debug("ImageProducer created");
@@ -61,14 +65,22 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
                         .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                         .build();
                 imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context), image -> {
+                    long nextInvoke = lastProducedTimestamp + producingPeriod;
+                    long awaitMs = nextInvoke - System.currentTimeMillis();
+                    if (awaitMs > 0) {
+                        image.close();
+                        return;
+                    }
+                    lastProducedTimestamp = System.currentTimeMillis();
                     if (shouldWork) {
                         if (!initialized.get()) {
                             int width = image.getWidth();
                             int height = image.getHeight();
                             try (@SuppressLint("UnsafeOptInUsageError") Image img = image.getImage()) {
                                 tmpBuf = new byte[img.getPlanes()[0].getBuffer().capacity()];
-                                writingImage = new YUVImage(width, height);
-                                temporaryImage = new YUVImage(width, height);
+                                rollingBuffer = new RollingHeap(() -> {
+                                    return new YUVImage(width, height);
+                                });
                                 putImage(img);
                             }
                             initialized.set(true);
@@ -89,11 +101,9 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
     }
 
 
-    private synchronized void putImage(Image cameraImage) {
+    private void putImage(Image cameraImage) {
         final int w = cameraImage.getWidth();
         final int h = cameraImage.getHeight();
-        //получем следующую не занятый буфер
-
 
         int wh = w * h; //размер черно/белого блока
         int halfWidth = w / 2;
@@ -102,10 +112,11 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
         int y = 0;
         int uPlaneOffset = wh;
         int vPlaneOffset = wh + whUV;
+        YUVImage image = rollingBuffer.getItemForWriting();
 
         if (cameraImage.getFormat() == ImageFormat.YUV_420_888) {
             ByteBuffer byteBuffer = cameraImage.getPlanes()[0].getBuffer();
-            final byte[] dstBuf = writingImage.getBuffer();
+            final byte[] dstBuf = image.getBuffer();
             //картинка может быть шириной 480, а шаг больше - 512. соответственно
             //надо выфильтровывать хвостики
             int stride = cameraImage.getPlanes()[0].getRowStride();
@@ -140,11 +151,19 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
                 }
                 //System.arraycopy(tmpBuf, srcOoffset, image.buffer, v + dstOffset, halfWidth);
             }
-
+            logger.debug("New image encoded to YUV format");
         } else {
             logger.error("Not implemented format {}", cameraImage.getFormat());
         }
-        writingImage.setTimestamp(cameraImage.getTimestamp());
+        long nanoTimestampSinceBoot = cameraImage.getTimestamp();
+        //codec consumes milliseconds
+        image.setTimestamp(nanoTimestampSinceBoot / 10000000);// added one extra zero...
+        synchronized (this) {
+            if (lastImage != null) {
+                rollingBuffer.freeItemAfterUsing(lastImage);
+            }
+            lastImage = image;
+        }
     }
 
     /**
@@ -154,15 +173,18 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
      */
     @Override
     public synchronized YUVImage getFreshImageOrNull() {
-        YUVImage image = writingImage;
-        writingImage = temporaryImage;
-        temporaryImage = null;
-        return image;
+        if (lastImage != null) {
+            logger.debug("Fresh image is grabbed");
+            YUVImage image = lastImage;
+            lastImage = null;
+            return image;
+        }
+        return null;
     }
 
     @Override
     public void freeImage(YUVImage image) {
-        temporaryImage = image;
+        rollingBuffer.freeItemAfterUsing(image);
     }
 
     @Override
@@ -171,8 +193,7 @@ public class FromCameraImageProducer implements ImageProducer, AutoCloseable {
         if (cameraProvider != null) {
             cameraProvider.unbindAll();
             cameraProvider = null;
-            writingImage = null;
-            temporaryImage = null;
+            lastImage = null;
         }
         logger.debug("ImageProducer disposed");
     }

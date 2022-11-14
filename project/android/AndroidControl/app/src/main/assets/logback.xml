@@ -1,0 +1,51 @@
+<configuration>
+    <property name="LOG_ROOT" value="/sdcard/logs" />
+
+    <appender name="logcat" class="ch.qos.logback.classic.android.LogcatAppender">
+        <tagEncoder>
+            <pattern>%-5level %logger{8}</pattern>
+        </tagEncoder>
+        <encoder>
+            <pattern>[%-8thread] %msg</pattern>
+        </encoder>
+    </appender>
+
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_ROOT}/application.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_ROOT}/application-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- each archived file's size will be max 10MB -->
+            <maxFileSize>10MB</maxFileSize>
+            <!-- 30 days to keep -->
+            <maxHistory>2</maxHistory>
+            <!-- total size of all archive files, if total size > 100GB, it will delete old archived file -->
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+
+    <root level="WARN">
+        <appender-ref ref="logcat"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+    <Logger name="org.example" level="INFO" additivity="false">
+        <appender-ref ref="logcat"/>
+        <appender-ref ref="FILE"/>
+    </Logger>
+<!--
+    <Logger name="com.example.androidcontrol.service.InFileFramesReader" level="DEBUG" additivity="false">
+        <appender-ref ref="logcat"/>
+    </Logger>
+    <Logger name="com.example.androidcontrol.video.VideoRenderer" level="DEBUG" additivity="false">
+        <appender-ref ref="logcat"/>
+    </Logger>
+    <Logger name="com.example.androidcontrol.VideoDirector" level="DEBUG" additivity="false">
+        <appender-ref ref="logcat"/>
+    </Logger>
+-->
+</configuration>

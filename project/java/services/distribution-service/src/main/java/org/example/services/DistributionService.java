@@ -22,7 +22,7 @@ public class DistributionService implements IncomingPacketAcceptor {
         });
     }
 
-    public void removeRegistration(ServicePacketAcceptor service){
+    public void removeRegistration(ServicePacketAcceptor service) {
         service.getAcceptPacketTypes().forEach(type -> {
             acceptors.remove(type);
         });
@@ -32,7 +32,13 @@ public class DistributionService implements IncomingPacketAcceptor {
     public void accept(PacketReference packet, Integer logId) {
         try {
             ServicePacketAcceptor service = acceptors.get(packet.getPacketType());
-            service.accept(packet, logId);
+            if (service != null) {
+                service.accept(packet, logId);
+            } else if (packet.getPacketType() == PacketTypes.KeepAlive) {
+                logger.debug("Keep alive in logId {}", logId);
+            } else {
+                logger.warn("There is no acceptor for {}", packet.getPacketType());
+            }
         } catch (Exception ex) {
             logger.error("During packet accept {} {}", packet.getPacketType(), logId, ex);
         }
