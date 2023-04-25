@@ -39,11 +39,11 @@ public abstract class AbstractPacketsReceiver {
                     if (foundRelativeStartOffset >= 0) {
                         relativeOffset += foundRelativeStartOffset; //points to new found packet
                         PacketRecevingResult recevingResult =
-                                protocolHandler.checkPacketIsComplete(data, dataOffset +relativeOffset, tailSize);
+                                protocolHandler.checkPacketIsComplete(data, dataOffset + relativeOffset, tailSize);
                         //if internal structure of packet is wrong
                         if (recevingResult.resultState == PacketRecevingResultStates.TRASH) {
-                            relativeOffset++;
                             logger.error("Trash for logId {}, offset {}", logId, relativeOffset);
+                            relativeOffset++;
                         } else if (recevingResult.resultState == PacketRecevingResultStates.COMPLETE) {
                             packetConsumer.accept(data, dataOffset + relativeOffset, recevingResult.size, logId);
                             relativeOffset += recevingResult.size;
@@ -61,6 +61,7 @@ public abstract class AbstractPacketsReceiver {
                         } else {
                             //there are no unknown tail and start next packet
                             result.pushingResult = PacketsPushingResultStates.EVERYTHING_SENT;
+                            logger.error("Unknown tail with size 1");
                         }
                         break;
                     }

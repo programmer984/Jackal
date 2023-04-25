@@ -35,7 +35,7 @@ public abstract class AbstractPacket {
     public static boolean checkCRC(byte[] buf, int packetStartOffset) {
         int size = getSize(buf, packetStartOffset);
         if (buf.length >= size) {
-            byte crc = buf[size - 1];
+            byte crc = buf[packetStartOffset + size - 1];
             byte crc2 = ByteUtils.calculateCrc(buf, packetStartOffset, size - 1);
             return crc == crc2;
         }

@@ -2,11 +2,9 @@
     <property name="LOG_ROOT" value="/sdcard/logs" />
 
     <appender name="logcat" class="ch.qos.logback.classic.android.LogcatAppender">
-        <tagEncoder>
-            <pattern>%-5level %logger{8}</pattern>
-        </tagEncoder>
+        <!-- please please enable compact view in android studio -->
         <encoder>
-            <pattern>[%-8thread] %msg</pattern>
+            <Pattern>[%thread] %msg%n</Pattern>
         </encoder>
     </appender>
 
@@ -32,16 +30,20 @@
         <appender-ref ref="FILE"/>
     </root>
 
-    <Logger name="org.example" level="INFO" additivity="false">
+    <Logger name="org.example" level="WARN" additivity="false">
         <appender-ref ref="logcat"/>
         <appender-ref ref="FILE"/>
     </Logger>
-<!--
-    <Logger name="com.example.dataprovider.service.FromCameraImageProducer" level="DEBUG" additivity="false">
+    <Logger name="com.example" level="DEBUG" additivity="false">
         <appender-ref ref="logcat"/>
     </Logger>
-    <Logger name="org.example.services.videoproducer.codec.Codec" level="DEBUG" additivity="false">
-        <appender-ref ref="logcat"/>
+    <!--
+        <Logger name="org.example.services.videoproducer" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+            <appender-ref ref="FILE"/>
     </Logger>
--->
+    <!--    <Logger name="org.example.services.videoproducer.codec.Codec" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+        </Logger>
+    -->
 </configuration>

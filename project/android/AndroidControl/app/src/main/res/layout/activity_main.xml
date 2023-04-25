@@ -14,13 +14,19 @@
         android:background="@color/black">
 
     </LinearLayout>
-
+    <com.example.androidcontrol.joystick.display.JoystickValueView
+        android:id="@+id/js"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp" />
     <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab"
+        android:id="@+id/fab1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="@dimen/fab_margin"
         app:srcCompat="@android:drawable/ic_dialog_email" />
+
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

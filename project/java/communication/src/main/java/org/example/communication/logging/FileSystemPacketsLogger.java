@@ -1,6 +1,7 @@
 package org.example.communication.logging;
 
 import org.example.PathUtils;
+import org.example.packets.LogFilePacketMarker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,12 +17,14 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
     private static final Logger logger
             = LoggerFactory.getLogger(FileSystemPacketsLogger.class);
     private AtomicInteger counter = new AtomicInteger();
+    private static final int maxFileSize = 10 * 1024 * 1024;
     private static final int maxQueueSize = 100;
     private Thread pipeThread;
     private final BlockingQueue<packetsBunch> packetsQueue = new LinkedBlockingDeque<>(maxQueueSize);
     private String currentPath;
     private final String baseDir;
     private Object joinLock = new Object();
+
 
     public FileSystemPacketsLogger(String baseDir) {
         this.baseDir = baseDir;
@@ -34,10 +37,13 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
     public Integer addIncomingBunch(byte[] data, int offset, int length) {
         if (packetsQueue.size() < maxQueueSize) {
             packetsBunch packetsBunch = new packetsBunch(Direction.IN, data, offset, length);
-            packetsQueue.add(packetsBunch);
-            return packetsBunch.number;
+            if (packetsQueue.offer(packetsBunch)) {
+                return packetsBunch.number;
+            }
+            logger.warn("incoming log queue full {}", packetsBunch.number);
+            return null;
         }
-        logger.warn("incoming queue full");
+        logger.warn("incoming log queue full");
         return null;
     }
 
@@ -45,9 +51,14 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
     public void addOutgoingBunch(byte[] data, int offset, int length, PostLogger postLogger) {
         if (packetsQueue.size() < maxQueueSize) {
             packetsBunch packetsBunch = new packetsBunch(Direction.OUT, data, offset, length, postLogger);
-            packetsQueue.add(packetsBunch);
+            if (!packetsQueue.offer(packetsBunch)) {
+                logger.warn("outgoing log queue full {}", packetsBunch.number);
+                if (postLogger != null) {
+                    postLogger.logAttempHappen(null);
+                }
+            }
         } else {
-            logger.warn("incoming queue full");
+            logger.warn("outgoing log queue full");
             if (postLogger != null) {
                 postLogger.logAttempHappen(null);
             }
@@ -70,6 +81,10 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
 
     @Override
     public void run() {
+        FileOutputStream fileOutputStream = null;
+        int fileNumber = 1;
+        int bytesWritten = 0;
+        byte[] markerBuf = new byte[32];
         try {
             while (Thread.currentThread().isAlive()) {
                 packetsBunch p = packetsQueue.take();
@@ -80,16 +95,35 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
                             String.format("%d-%d", date.getHours(), date.getMinutes()));
                     new File(currentPath).mkdirs();
                 }
+                try {
+                    //create output file
+                    if (fileOutputStream == null) {
+                        File f = new File(PathUtils.resolve(currentPath, String.format("%d.bin", fileNumber++)));
+                        fileOutputStream = new FileOutputStream(f);
+                    } else if (bytesWritten >= maxFileSize) {
+                        fileOutputStream.close();
+                        File f = new File(PathUtils.resolve(currentPath, String.format("%d.bin", fileNumber++)));
+                        fileOutputStream = new FileOutputStream(f);
+                        bytesWritten = 0;
+                    }
 
-                File f = new File(PathUtils.resolve(currentPath, String.format("%08d - %s.bin", p.number, p.direction)));
-                try (FileOutputStream fileOutputStream = new FileOutputStream(f)) {
+                    //writting marker of the packet
+                    int logMarkerSize = p.fillLogMarkerBuf(markerBuf);
+                    fileOutputStream.write(markerBuf, 0, logMarkerSize);
+                    bytesWritten += logMarkerSize;
+
+                    //writing actual packet
                     fileOutputStream.write(p.value, p.offset, p.length);
+                    bytesWritten += p.length;
+
+                    //log if there is attached logger
                     if (p.postLogger != null) {
                         p.postLogger.logAttempHappen(p.number);
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+                //required for buffers reusing (notify about we done)
                 if (isEmpty()) {
                     synchronized (joinLock) {
                         joinLock.notify();
@@ -98,6 +132,14 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
             }
         } catch (InterruptedException ignored) {
 
+        } finally {
+            if (fileOutputStream != null) {
+                try {
+                    fileOutputStream.close();
+                } catch (IOException e) {
+                    logger.error("Logger disposing", e);
+                }
+            }
         }
     }
 
@@ -114,6 +156,7 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
         int offset;
         int length;
         PostLogger postLogger;
+        LogFilePacketMarker marker;
 
         public packetsBunch(Direction direction, byte[] value, int offset, int length) {
             this(direction, value, offset, length, null);
@@ -126,6 +169,13 @@ public class FileSystemPacketsLogger implements DataLogger, Runnable {
             this.offset = offset;
             this.length = length;
             this.postLogger = postLogger;
+            this.marker = new LogFilePacketMarker(number, direction.name());
+        }
+
+        public int fillLogMarkerBuf(byte[] buf) {
+            int writtenSize = marker.calculateSize();
+            marker.toArray(buf, 0, writtenSize);
+            return writtenSize;
         }
     }
 }

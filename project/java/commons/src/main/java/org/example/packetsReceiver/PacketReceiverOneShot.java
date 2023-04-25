@@ -14,6 +14,9 @@ public class PacketReceiverOneShot extends AbstractPacketsReceiver{
 
     @Override
     public void onNewDataReceived(byte[] data, int offsetFinal, int sizeFinal, Integer logId) {
-        searchPacketsAndPush(data, offsetFinal, sizeFinal, logId);
+        PacketsPushingResult result = searchPacketsAndPush(data, offsetFinal, sizeFinal, logId);
+        if (result.pushingResult!=PacketsPushingResultStates.EVERYTHING_SENT){
+            logger.error("Wrong buf processing result: {}, LogId {}", result.pushingResult, logId);
+        }
     }
 }

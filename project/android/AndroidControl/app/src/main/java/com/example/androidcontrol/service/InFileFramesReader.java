@@ -37,8 +37,6 @@ public class InFileFramesReader implements AutoCloseable {
     private int pipingFrameIndex;
 
     private List<DataReference> foundVideoFrames = new ArrayList<>();
-
-
     private ProtocolHandler framesAnalizer = new ProtocolHandler() {
         PacketRecevingResult result = new PacketRecevingResult();
 
@@ -115,6 +113,11 @@ public class InFileFramesReader implements AutoCloseable {
             e.printStackTrace();
         }
     };
+
+
+
+
+
 
 
     public InFileFramesReader(VideoDirector director, InputStream inputStream, TimersManager timersManager) {

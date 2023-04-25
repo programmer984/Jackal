@@ -4,7 +4,7 @@ import org.example.communication.KeepAlivePacketProducer;
 import org.example.endpoint.OutgoingPacketCarrier;
 import org.example.packets.KeepAlive;
 import org.example.services.DistributionService;
-import org.example.services.videoconsumer.VideoFramesReader;
+import org.example.services.videoconsumer.VideoFramesCollector;
 import org.example.services.videoconsumer.VideoRecorderDecorator;
 import org.example.tools.UdpHoleDataPipeFactory;
 import org.example.udphole.UdpHoleDataPipe;
@@ -49,16 +49,16 @@ public class Main {
             endPoint = new PlainUdpEndPoint(dataPipe, distributionService, factory.getTimersManager());
         }
 
-        VideoFramesReader framesReader;
+        VideoFramesCollector framesReader;
         VideoRecorderDecorator videoRecorderDecorator = null;
         if (CommonConfig.recordVideo) {
             File videoFile = Paths.get(CommonConfig.packetsDir, String.format("video-%d.mp4", System.nanoTime())).toFile();
             videoRecorderDecorator = new VideoRecorderDecorator(new VlcPlayer(), videoFile);
 
             //it will be build videoframe from udp packets
-            framesReader = new VideoFramesReader(videoRecorderDecorator, endPoint);
+            framesReader = new VideoFramesCollector(videoRecorderDecorator, endPoint, factory.getTimersManager());
         } else {
-            framesReader = new VideoFramesReader(new VlcPlayer(), endPoint);
+            framesReader = new VideoFramesCollector(new VlcPlayer(), endPoint, factory.getTimersManager());
         }
 
         //distribution service must redirect video packets to framesReader

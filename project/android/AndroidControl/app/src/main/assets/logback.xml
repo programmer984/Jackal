@@ -2,14 +2,11 @@
     <property name="LOG_ROOT" value="/sdcard/logs" />
 
     <appender name="logcat" class="ch.qos.logback.classic.android.LogcatAppender">
-        <tagEncoder>
-            <pattern>%-5level %logger{8}</pattern>
-        </tagEncoder>
+        <!-- please please enable compact view in android studio -->
         <encoder>
-            <pattern>[%-8thread] %msg</pattern>
+            <Pattern>[%thread] %msg%n</Pattern>
         </encoder>
     </appender>
-
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_ROOT}/application.log</file>
@@ -30,22 +27,35 @@
 
     <root level="WARN">
         <appender-ref ref="logcat"/>
-        <appender-ref ref="FILE"/>
+        <!--<appender-ref ref="FILE"/>-->
     </root>
 
-    <Logger name="org.example" level="INFO" additivity="false">
+    <Logger name="org.example" level="WARN" additivity="false">
         <appender-ref ref="logcat"/>
         <appender-ref ref="FILE"/>
     </Logger>
-<!--
-    <Logger name="com.example.androidcontrol.service.InFileFramesReader" level="DEBUG" additivity="false">
-        <appender-ref ref="logcat"/>
+
+
+
+
+    <!--
+        <Logger name="org.example.services.videoconsumer" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+            <appender-ref ref="FILE"/>
     </Logger>
-    <Logger name="com.example.androidcontrol.video.VideoRenderer" level="DEBUG" additivity="false">
-        <appender-ref ref="logcat"/>
-    </Logger>
-    <Logger name="com.example.androidcontrol.VideoDirector" level="DEBUG" additivity="false">
-        <appender-ref ref="logcat"/>
-    </Logger>
--->
+
+        <Logger name="com.example.androidcontrol.joystick" level="DEBUG" additivity="false">
+            <appender-ref ref="at"/>
+        </Logger>
+
+        <Logger name="com.example.androidcontrol.service.InFileFramesReader" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+        </Logger>
+        <Logger name="com.example.androidcontrol.video.VideoRenderer" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+        </Logger>
+        <Logger name="com.example.androidcontrol.VideoDirector" level="DEBUG" additivity="false">
+            <appender-ref ref="logcat"/>
+        </Logger>
+    -->
 </configuration>

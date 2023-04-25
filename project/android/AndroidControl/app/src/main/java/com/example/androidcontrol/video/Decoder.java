@@ -40,7 +40,7 @@ public class Decoder implements AutoCloseable {
     private final static int headerLength = 8;
     private final byte[] startMarker = new byte[]{0x35, 0x11, (byte) 0x89, 0x14};
     private final byte[] sizeBuf = new byte[4];
-
+    private static final int MINIMUM_FD_NUMBER = 4;
 
     private int yuvValidateSize;
     private PacketsReceiverStreamCollector packetsReceiver;
@@ -62,6 +62,12 @@ public class Decoder implements AutoCloseable {
         javaRead = pair[0];
         nativeWrite = pair[1];
 
+        if (nativeRead.getFd() < MINIMUM_FD_NUMBER || javaWrite.getFd() < MINIMUM_FD_NUMBER ||
+                javaRead.getFd() < MINIMUM_FD_NUMBER || nativeWrite.getFd() < MINIMUM_FD_NUMBER) {
+            throw new IOException(String.format("Invalid file descriptor %d %d %d %d", nativeRead.getFd(), javaWrite.getFd(),
+                    javaRead.getFd(), nativeWrite.getFd()));
+        }
+
         initDecoder(width, height, nativeRead.getFd(), nativeWrite.getFd());
 
         outputStream = new ParcelFileDescriptor.AutoCloseOutputStream(javaWrite);
@@ -70,7 +76,7 @@ public class Decoder implements AutoCloseable {
         packetsReceiver = new PacketsReceiverStreamCollector(timersManager, new CodecNativeProtocolHandler(yuvValidateSize),
                 () -> 1, onePacketConsumer, CodecNativeProtocolHandler.incomingHeaderLength + yuvValidateSize, 10);
 
-        readThread = new Thread(reader, "readerThread");
+        readThread = new Thread(reader, "decoderReadThread");
         readThread.setDaemon(true);
         readThread.start();
     }

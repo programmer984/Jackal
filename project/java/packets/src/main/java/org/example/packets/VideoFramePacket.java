@@ -46,6 +46,14 @@ public class VideoFramePacket extends AbstractPacket {
         totalApproximateSize = videFrame.length / 1000;
     }
 
+    public int getId() {
+        return id;
+    }
+
+    public int getIndex() {
+        return partIndex;
+    }
+
     public static int getPacketId(byte[] packets, int packetOffset) {
         return ByteUtils.bufToI32(packets, packetOffset + ID_OFFSET);
     }

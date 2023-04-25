@@ -52,7 +52,7 @@ public class UdpPlainDataPipe implements DataPipe {
         this.timersManager = timersManager;
         dispatcher = new Dispatcher(100, "plain-udp-sender");
         if (CommonConfig.logPackets) {
-            packetsLogger = new FileSystemPacketsLogger(PathUtils.resolve(CommonConfig.packetsDir, "plain-udp"));
+            packetsLogger = new FileSystemPacketsLogger(PathUtils.resolve(CommonConfig.packetsDir, "plain-udp-"+System.currentTimeMillis()));
         } else {
             packetsLogger = new NoLogger();
         }

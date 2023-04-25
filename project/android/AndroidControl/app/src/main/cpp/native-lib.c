@@ -76,11 +76,12 @@ void packetConsumer(byte *data, int size) {
 
 void *decodeRunner() {
     //read from pipe header+videoFrame
+    LOG_DEBUG("epInitialize, line %d.", __LINE__);
     epInitialize(&instance, width, height);
     instance.writeOutYUVPart = &writeYUVPart;
     instance.flushOut = &flushOut;
 
-
+    LOG_DEBUG("PacketReceiverInstance malloc, line %d.", __LINE__);
     PacketReceiverInstance_t *prInstance = malloc(sizeof(PacketReceiverInstance_t));
     prInstance->protocolHandlers = createProtocolHandlers();
     prInstance->communicationDriver = createDriverInstance();
@@ -99,14 +100,17 @@ void *decodeRunner() {
         onNewDataReceived(prInstance, tmpBufPtr, readCount);
     }
 
+    LOG_DEBUG("WelsDestroyDecoder, line %d.", __LINE__);
     WelsDestroyDecoder(instance.pSvcDecoder);
-    free(instance.outBuf);
 
+    free(instance.outBuf);
     free(prInstance->rxProp->rxBuf);
     free(prInstance->rxProp);
     free(prInstance->communicationDriver);
     free(prInstance->protocolHandlers);
     free(prInstance);
+    //close(pipeIn);
+    //close(pipeOut);
 }
 
 void writeAll(byte *data, int dataSize) {

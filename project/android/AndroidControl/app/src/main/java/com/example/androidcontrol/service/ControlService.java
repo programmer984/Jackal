@@ -1,11 +1,16 @@
 package com.example.androidcontrol.service;
 
+import android.Manifest;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.IBinder;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 
 import com.example.androidcontrol.R;
@@ -23,7 +28,7 @@ import org.example.packets.AbstractPacket;
 import org.example.packets.KeepAlive;
 import org.example.packets.PacketTypes;
 import org.example.services.DistributionService;
-import org.example.services.videoconsumer.VideoFramesReader;
+import org.example.services.videoconsumer.VideoFramesCollector;
 import org.example.tools.UdpHoleDataPipeFactory;
 import org.example.udphole.UdpHoleDataPipe;
 import org.example.udphole.UdpHoleEndPoint;
@@ -40,6 +45,7 @@ import java.util.Set;
 public class ControlService extends Service {
 
     private final Logger logger = LoggerFactory.getLogger(ControlService.class);
+
     private static KeepAlivePacketProducer keepAlivePacketProducer = () -> new KeepAlive().toArray(true);
 
     private Binder binder;
@@ -51,7 +57,7 @@ public class ControlService extends Service {
     private DistributionService distributionService;
     private OutgoingPacketCarrier endPoint;
     private DataPipe dataPipe;
-    private VideoFramesReader networkFramesReader;
+    private VideoFramesCollector networkFramesReader;
     private InFileFramesReader fileFramesReader;
 
     private ServicePacketAcceptor netWorkFrameReaderProxy=new ServicePacketAcceptor() {
@@ -81,9 +87,9 @@ public class ControlService extends Service {
     }
 
 
-
     public void onCreate() {
         super.onCreate();
+
         binder = new Binder();
         logger.info("Service initialization started");
 
@@ -155,7 +161,7 @@ public class ControlService extends Service {
             fileFramesReader.startReading();
         }
 
-        networkFramesReader = new VideoFramesReader(director, endPoint);
+        networkFramesReader = new VideoFramesCollector(director, endPoint, factory.getTimersManager());
         //distribution service must redirect video packets to framesReader
         distributionService.registerService(netWorkFrameReaderProxy);
     }

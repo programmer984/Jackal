@@ -5,9 +5,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 public enum PacketTypes {
+    LogFilePacketMarker(0x01),
     VideoFrame(0x11),
     VideoHeader(0x12),
     VideoLacksRequest(0x13),
+    VideoFramesSet(0x14),
     KeepAlive(0x44),
     // 0x70 - 0x7F - hardware control packets (should be retranslated to Hardware Control)
     HWKeepAlive(0x70),
@@ -39,4 +41,5 @@ public enum PacketTypes {
     public byte getNumberAsByte() {
         return (byte) number;
     }
+
 }

@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+@Deprecated
 public class HWMoveGestureListener implements View.OnTouchListener {
 
     private final Logger logger = LoggerFactory.getLogger(HWMoveGestureListener.class);
@@ -46,7 +47,6 @@ public class HWMoveGestureListener implements View.OnTouchListener {
         gestureDetector = new GestureDetector(context, new GestureListener());
         timersManager.addTimer(StepMs, true, oneStepCommandCreator);
         updateActionTime();
-        ch.qos.logback.classic.android.LogcatAppender appender;
     }
 
     private final TimerCallback oneStepCommandCreator = () -> {

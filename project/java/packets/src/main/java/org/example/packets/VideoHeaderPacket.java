@@ -118,4 +118,9 @@ public class VideoHeaderPacket extends AbstractPacket {
     public int calculateSize() {
         return TLC_LENGTH + WH_LENGTH + headerLength;
     }
+
+
+    public static boolean dimensionEquals(VideoHeaderPacket h1, VideoHeaderPacket h2){
+        return h1.getWidth()==h2.getWidth() && h1.getHeight() == h2.getHeight();
+    }
 }

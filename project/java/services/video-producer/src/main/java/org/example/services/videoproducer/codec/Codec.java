@@ -51,7 +51,7 @@ public abstract class Codec implements AutoCloseable {
     }
 
     protected void startReadReadyFrameThread() {
-        readThread = new Thread(reader, "readerThread");
+        readThread = new Thread(reader, "frameReaderThread");
         readThread.setDaemon(true);
         readThread.start();
     }
